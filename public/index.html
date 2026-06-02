@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Full-Stack Trading Workspace</title>
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root {
+            --bg-main: #ffffff; --bg-sidebar: #f8f9fd; --text-main: #131722; --text-muted: #787b86;
+            --border-color: #e0e3eb; --color-bull: #26a69a; --color-bear: #ef5350; --color-brand: #2962ff;
+        }
+        body {
+            background-color: var(--bg-main); color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            margin: 0; height: 100vh; overflow: hidden;
+            display: grid; grid-template-columns: 55px 1fr 320px; grid-template-rows: 50px 1fr 220px;
+            grid-template-areas: "topbar topbar topbar" "leftbar chart rightbar" "leftbar bottombar rightbar";
+        }
+        
+        /* AUTH OVERLAY MODAL FORM DESIGNS */
+        #auth-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(19, 23, 34, 0.95); z-index: 99999;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .auth-box { background: white; padding: 35px; border-radius: 8px; width: 360px; box-shadow: 0 15px 30px rgba(0,0,0,0.3); box-sizing: border-box; }
+        .auth-box h2 { margin-top: 0; font-size: 20px; text-align: center; margin-bottom: 20px; }
+        .auth-box button { width: 100%; padding: 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer; color: white; background: var(--color-brand); margin-top: 10px; }
+        .auth-toggle-link { text-align: center; font-size: 12px; margin-top: 15px; color: var(--color-brand); cursor: pointer; }
+
+        #topbar { grid-area: topbar; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 15px; justify-content: space-between; }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        #symbol-selector { font-size: 14px; font-weight: bold; border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 4px; background: white; cursor: pointer; }
+        .live-status { display: flex; align-items: center; font-size: 12px; font-weight: bold; color: var(--color-bull); }
+        .pulse-dot { width: 8px; height: 8px; background: var(--color-bull); border-radius: 50%; margin-right: 6px; animation: blink 1.5s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        #leftbar { grid-area: leftbar; border-right: 1px solid var(--border-color); background-color: var(--bg-sidebar); display: flex; flex-direction: column; align-items: center; padding-top: 15px; gap: 12px; }
+        .tool-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: #5d606b; font-size: 18px; }
+        
+        /* STACKED PANEL CHART CONTAINER SYSTEM */
+        #chart-container { grid-area: chart; display: flex; flex-direction: column; width: 100%; height: 100%; }
+        #price-pane { flex: 3; position: relative; width: 100%; }
+        #rsi-pane { flex: 1; position: relative; width: 100%; border-top: 2px solid var(--border-color); }
+
+        #rightbar { grid-area: rightbar; border-left: 1px solid var(--border-color); background-color: var(--bg-sidebar); padding: 20px; display: flex; flex-direction: column; gap: 15px; box-sizing: border-box; overflow-y: auto;}
+        .panel-section { background: white; border: 1px solid var(--border-color); padding: 15px; border-radius: 6px; }
+        .panel-section h3 { margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+        .metric-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        .metric-val { font-weight: bold; }
+        .side-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 12px; }
+        .side-btn { padding: 8px; text-align: center; font-weight: bold; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 13px; background: #fff;}
+        .side-btn.buy.active { background: var(--color-bull); color: white; border-color: var(--color-bull); }
+        .side-btn.sell.active { background: var(--color-bear); color: white; border-color: var(--color-bear); }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; font-weight: bold; }
+        .input-group input, .input-group select { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box; font-size: 13px; }
+        .risk-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        
+        #submit-order-btn { width: 100%; padding: 12px; border: none; border-radius: 4px; font-size: 14px; font-weight: bold; color: white; cursor: pointer; margin-top: 5px; background-color: var(--color-bull); }
+        #error-banner { display: none; background: #fde8e8; color: var(--color-bear); border: 1px solid #f9c8c8; padding: 10px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-align: center;}
+        
+        #bottombar { grid-area: bottombar; border-top: 1px solid var(--border-color); background-color: var(--bg-main); display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 15px; box-sizing: border-box; overflow: hidden; }
+        .table-panel { overflow-y: auto; height: 100%; }
+        .panel-header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 8px; }
+        .panel-header-row h4 { margin: 0; font-size: 13px; text-transform: uppercase; color: var(--text-muted); }
+        .stat-badge { font-size: 11px; background: #f0f3fa; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+        .log-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+        .log-table th { color: var(--text-muted); font-weight: normal; padding-bottom: 6px; border-bottom: 1px solid var(--border-color); }
+        .log-table td { padding: 8px 0; border-bottom: 1px solid #f1f3f6; }
+        .pos-profit { color: var(--color-bull); font-weight: bold; }
+        .pos-loss { color: var(--color-bear); font-weight: bold; }
+        .close-action-btn { background: #e0e3eb; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; }
+        .logout-btn { background: none; border: 1px solid var(--border-color); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: var(--text-muted); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-overlay">
+        <div class="auth-box" id="login-form-panel">
+            <h2>Account Trader Login</h2>
+            <div id="auth-error-banner" style="color:var(--color-bear); font-size:12px; font-weight:bold; text-align:center; margin-bottom:10px;"></div>
+            <div class="input-group"><label>USERNAME</label><input type="text" id="auth-user" placeholder="Enter username"></div>
+            <div class="input-group"><label>PASSWORD</label><input type="password" id="auth-pass" placeholder="Enter password"></div>
+            <button id="action-login-btn">LOGIN TO ACCOUNT</button>
+            <div class="auth-toggle-link" id="go-to-signup">New trader? Sign up for a portfolio here</div>
+        </div>
+
+        <div class="auth-box" id="signup-form-panel" style="display: none;">
+            <h2>Register Trading Account</h2>
+            <div class="input-group"><label>CHOOSE USERNAME</label><input type="text" id="reg-user" placeholder="Username"></div>
+            <div class="input-group"><label>CHOOSE PASSWORD</label><input type="password" id="reg-pass" placeholder="Password"></div>
+            <div class="input-group"><label>INITIAL CAPITAL</label>
+                <select id="reg-capital">
+                    <option value="100000">₹1,00,000</option>
+                    <option value="500000">₹5,00,000</option>
+                    <option value="2500000">₹25,00,000</option>
+                </select>
+            </div>
+            <button id="action-signup-btn">CREATE AND SET BALANCE</button>
+            <div class="auth-toggle-link" id="go-to-login">Have an account? Log in here</div>
+        </div>
+    </div>
+
+    <div id="topbar">
+        <div class="header-left">
+            <select id="symbol-selector">
+                <option value="BTCUSDT">BTC / USDT (LIVE)</option>
+                <option value="ETHUSDT">ETH / USDT (LIVE)</option>
+                <option value="SOLUSDT">SOL / USDT (LIVE)</option>
+            </select>
+            <span id="active-user-badge" style="font-size:13px; font-weight:bold; color:var(--color-brand);">Account: Guest</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:15px;">
+            <button class="logout-btn" id="action-logout-btn">LOG OUT</button>
+            <div class="live-status"><span class="pulse-dot"></span> LIVE BROADCAST RUNNING</div>
+        </div>
+    </div>
+
+    <div id="leftbar"><div class="tool-icon">✛</div><div class="tool-icon">╱</div><div class="tool-icon">─</div></div>
+    
+    <div id="chart-container">
+        <div id="price-pane"></div>
+        <div id="rsi-pane"></div>
+    </div>
+
+    <div id="rightbar">
+        <div class="panel-section">
+            <h3>Secure Balances</h3>
+            <div class="metric-row"><span>Available Cash:</span><span class="metric-val" id="disp-cash">₹0.00</span></div>
+            <div class="metric-row"><span>Blocked Margin:</span><span class="metric-val" id="disp-margin">₹0.00</span></div>
+            <div class="metric-row"><span>Open P&L:</span><span class="metric-val" id="disp-pnl">₹0.00</span></div>
+        </div>
+
+        <div class="panel-section">
+            <h3>Broker Ticket Desk</h3>
+            <div id="error-banner"></div>
+            <div class="side-toggle">
+                <div class="side-btn buy active" id="side-buy">BUY</div>
+                <div class="side-btn sell" id="side-sell">SELL</div>
+            </div>
+            <div class="input-group">
+                <label>PRODUCT STRATEGY</label>
+                <select id="order-product">
+                    <option value="MIS">Intraday MIS (5x Leverage)</option>
+                    <option value="NRML">Delivery NRML (1x Margin)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label id="qty-label">QUANTITY (UNITS)</label>
+                <input type="number" id="order-qty" value="1" min="0.01" step="0.01">
+            </div>
+
+            <div class="risk-inputs">
+                <div class="input-group">
+                    <label>STOP LOSS (SL)</label>
+                    <input type="number" id="order-sl" placeholder="Trigger Price" step="0.01">
+                </div>
+                <div class="input-group">
+                    <label>TAKE PROFIT (TP)</label>
+                    <input type="number" id="order-tp" placeholder="Target Price" step="0.01">
+                </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-bottom: 12px;">
+                <div class="metric-row" style="color: var(--text-muted);"><span>Required Margin:</span><span id="disp-req-margin" style="font-weight: bold; color: var(--text-main);">₹0.00</span></div>
+            </div>
+            <button id="submit-order-btn">TRANSMIT ORDER TO EXCHANGE</button>
+        </div>
+    </div>
+
+    <div id="bottombar">
+        <div class="table-panel">
+            <div class="panel-header-row"><h4>Active Open Positions</h4></div>
+            <table class="log-table">
+                <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>SL / TP</th><th>LTP</th><th>Live P&L</th><th>Action</th></tr></thead>
+                <tbody id="position-table-body"></tbody>
+            </table>
+        </div>
+
+        <div class="table-panel" style="border-left: 1px solid var(--border-color); padding-left: 15px;">
+            <div class="panel-header-row"><h4>Performance History Archive</h4><span class="stat-badge" id="stat-winrate">Win Rate: 0%</span></div>
+            <table class="log-table">
+                <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry Price</th><th>Exit Price</th><th>Realized P&L</th></tr></thead>
+                <tbody id="history-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 1. SMART API ROUTER ENGINE ---
+            // Automatically determines if server communication points to localhost or production environment mapping parameters
+            const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? 'http://localhost:3000'
+                : window.location.origin;
+
+            let marketState = { activeSymbol: 'BTCUSDT', currentPrice: 0, historicalData: [] };
+            let activeOrderSide = 'BUY';
+            let localPositionsArray = [];
+            let activeWebSocket = null;
+            
+            let loggedInUserId = localStorage.getItem('trader_userId') || null;
+            let loggedInUsername = localStorage.getItem('trader_username') || null;
+
+            const authOverlay = document.getElementById('auth-overlay');
+            const loginPanel = document.getElementById('login-form-panel');
+            const signupPanel = document.getElementById('signup-form-panel');
+            const authError = document.getElementById('auth-error-banner');
+
+            const dispCash = document.getElementById('disp-cash');
+            const dispMargin = document.getElementById('disp-margin');
+            const dispPnL = document.getElementById('disp-pnl');
+            const orderProduct = document.getElementById('order-product');
+            const orderQtyInput = document.getElementById('order-qty');
+            const orderSLInput = document.getElementById('order-sl');
+            const orderTPInput = document.getElementById('order-tp');
+            const qtyLabel = document.getElementById('qty-label');
+            const dispReqMargin = document.getElementById('disp-req-margin');
+            const submitOrderBtn = document.getElementById('submit-order-btn');
+            const errorBanner = document.getElementById('error-banner');
+            const positionTableBody = document.getElementById('position-table-body');
+            const historyTableBody = document.getElementById('history-table-body');
+            const statWinrate = document.getElementById('stat-winrate');
+            const symbolSelector = document.getElementById('symbol-selector');
+            const userBadge = document.getElementById('active-user-badge');
+
+            document.getElementById('go-to-signup').addEventListener('click', () => { loginPanel.style.display='none'; signupPanel.style.display='block'; });
+            document.getElementById('go-to-login').addEventListener('click', () => { signupPanel.style.display='none'; loginPanel.style.display='block'; });
+
+            // Authentication Handlers
+            document.getElementById('action-login-btn').addEventListener('click', () => {
+                const username = document.getElementById('auth-user').value;
+                const password = document.getElementById('auth-pass').value;
+                fetch(`${API_BASE_URL}/api/login`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username, password }) })
+                .then(async res => { const d = await res.json(); if(!res.ok) throw new Error(d.error); return d; })
+                .then(data => handleAuthSuccess(data.userId, data.username)).catch(err => { authError.innerText = err.message; });
+            });
+
+            document.getElementById('action-signup-btn').addEventListener('click', () => {
+                const username = document.getElementById('reg-user').value;
+                const password = document.getElementById('reg-pass').value;
+                const startingCapital = document.getElementById('reg-capital').value;
+                fetch(`${API_BASE_URL}/api/signup`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username, password, startingCapital }) })
+                .then(async res => { const d = await res.json(); if(!res.ok) throw new Error(d.error); return d; })
+                .then(data => handleAuthSuccess(data.userId, data.username)).catch(err => alert(err.message));
+            });
+
+            document.getElementById('action-logout-btn').addEventListener('click', () => { localStorage.clear(); window.location.reload(); });
+
+            function handleAuthSuccess(id, user) {
+                loggedInUserId = id; loggedInUsername = user;
+                localStorage.setItem('trader_userId', id); localStorage.setItem('trader_username', user);
+                authOverlay.style.display = 'none'; userBadge.innerText = `Account: ${user}`; refreshAccountFromBackend();
+            }
+
+            if (loggedInUserId) { authOverlay.style.display = 'none'; userBadge.innerText = `Account: ${loggedInUsername}`; }
+
+            function refreshAccountFromBackend() {
+                if (!loggedInUserId) return;
+                fetch(`${API_BASE_URL}/api/account`, { headers: { 'user-id': loggedInUserId } })
+                .then(res => res.json())
+                .then(account => {
+                    dispCash.innerText = `₹${account.availableCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    dispMargin.innerText = `₹${account.blockedMargin.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    localPositionsArray = account.openPositions;
+                    renderPositionLedger();
+                    renderHistoryLedger(account.tradeHistory || []);
+                });
+            }
+            if (loggedInUserId) refreshAccountFromBackend();
+
+            // --- DOUBLE CANVAS PANE ASSEMBLY ---
+            const pricePaneContainer = document.getElementById('price-pane');
+            const priceChart = LightweightCharts.createChart(pricePaneContainer, {
+                layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#131722' },
+                grid: { vertLines: { color: '#e0e3eb' }, horzLines: { color: '#e0e3eb' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                timeScale: { borderColor: '#e0e3eb', timeVisible: true, visible: true }
+            });
+            let candlestickSeries = priceChart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
+
+            const rsiPaneContainer = document.getElementById('rsi-pane');
+            const rsiChart = LightweightCharts.createChart(rsiPaneContainer, {
+                layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#131722' },
+                grid: { vertLines: { color: '#e0e3eb' }, horzLines: { color: '#e0e3eb' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                timeScale: { borderColor: '#e0e3eb', timeVisible: false, visible: false },
+                rightPriceScale: { minMove: 0.01, maxValue: 100, minValue: 0 }
+            });
+            let rsiSeries = rsiChart.addLineSeries({ color: '#7e57c2', lineWidth: 1.5 });
+
+            rsiSeries.createPriceLine({ price: 70, color: '#ef5350', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'OVERBOUGHT' });
+            rsiSeries.createPriceLine({ price: 30, color: '#26a69a', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'OVERSOLD' });
+
+            let isSyncing = false;
+            priceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                if (isSyncing) return; isSyncing = true; rsiChart.timeScale().setVisibleLogicalRange(range); isSyncing = false;
+            });
+            rsiChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                if (isSyncing) return; isSyncing = true; priceChart.timeScale().setVisibleLogicalRange(range); isSyncing = false;
+            });
+
+            new ResizeObserver(() => {
+                priceChart.applyOptions({ width: pricePaneContainer.clientWidth, height: pricePaneContainer.clientHeight });
+                rsiChart.applyOptions({ width: rsiPaneContainer.clientWidth, height: rsiPaneContainer.clientHeight });
+            }).observe(document.getElementById('chart-container'));
+
+            // Mathematical Indicator Formulas
+            function computeRSIDataset(candles, period = 14) {
+                let rsiData = []; if (candles.length <= period) return rsiData;
+                let gains = 0; let losses = 0;
+                for (let i = 1; i <= period; i++) {
+                    let diff = candles[i].close - candles[i-1].close; if (diff > 0) gains += diff; else losses -= diff;
+                }
+                let avgGain = gains / period; let avgLoss = losses / period;
+                rsiData.push({ time: candles[period].time, value: 100 - (100 / (1 + (avgLoss === 0 ? 100 : avgGain / avgLoss))) });
+                
+                for (let i = period + 1; i < candles.length; i++) {
+                    let diff = candles[i].close - candles[i-1].close;
+                    let currentGain = diff > 0 ? diff : 0; let currentLoss = diff < 0 ? -diff : 0;
+                    avgGain = ((avgGain * (period - 1)) + currentGain) / period;
+                    avgLoss = ((avgLoss * (period - 1)) + currentLoss) / period;
+                    rsiData.push({ time: candles[i].time, value: 100 - (100 / (1 + (avgLoss === 0 ? 100 : avgGain / avgLoss))) });
+                }
+                return rsiData;
+            }
+
+            // Stream Pipeline Connectors
+            function connectToWebSocket(symbol) {
+                marketState.activeSymbol = symbol; if (activeWebSocket) { activeWebSocket.close(); }
+                qtyLabel.innerText = `QUANTITY (${symbol.replace('USDT', '')})`;
+
+                let baselinePrice = symbol === 'BTCUSDT' ? 67000 : (symbol === 'ETHUSDT' ? 3500 : 160);
+                let data = []; let timeTracker = new Date(); timeTracker.setMinutes(timeTracker.getMinutes() - 60);
+                for (let i = 0; i < 60; i++) { timeTracker.setMinutes(timeTracker.getMinutes() + 1); data.push({ time: Math.floor(timeTracker.getTime()/1000), open: baselinePrice, high: baselinePrice+2, low: baselinePrice-2, close: baselinePrice+1 }); }
+                
+                marketState.historicalData = data;
+                candlestickSeries.setData(data);
+                rsiSeries.setData(computeRSIDataset(data));
+                priceChart.timeScale().fitContent();
+
+                activeWebSocket = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
+                activeWebSocket.onmessage = function(event) {
+                    const msg = JSON.parse(event.data); const kline = msg.k;
+                    const liveCandle = { time: kline.t / 1000, open: parseFloat(kline.o), high: parseFloat(kline.h), low: parseFloat(kline.l), close: parseFloat(kline.c) };
+                    
+                    candlestickSeries.update(liveCandle);
+                    marketState.currentPrice = liveCandle.close;
+
+                    const lastIdx = marketState.historicalData.length - 1;
+                    if (marketState.historicalData[lastIdx] && marketState.historicalData[lastIdx].time === liveCandle.time) {
+                        marketState.historicalData[lastIdx] = liveCandle;
+                    } else { marketState.historicalData.push(liveCandle); }
+
+                    let freshRsiPoints = computeRSIDataset(marketState.historicalData);
+                    if (freshRsiPoints.length > 0) { rsiSeries.update(freshRsiPoints[freshRsiPoints.length - 1]); }
+
+                    calculateLocalMarginEstimate();
+                    updateLivePnLAndCheckRiskTriggers();
+                };
+            }
+
+            symbolSelector.addEventListener('change', (e) => connectToWebSocket(e.target.value));
+            connectToWebSocket('BTCUSDT');
+
+            // Form Calculation Events
+            document.getElementById('side-buy').addEventListener('click', () => { activeOrderSide = 'BUY'; document.getElementById('side-buy').classList.add('active'); document.getElementById('side-sell').classList.remove('active'); submitOrderBtn.style.backgroundColor = 'var(--color-bull)'; });
+            document.getElementById('side-sell').addEventListener('click', () => { activeOrderSide = 'SELL'; document.getElementById('side-sell').classList.add('active'); document.getElementById('side-buy').classList.remove('active'); submitOrderBtn.style.backgroundColor = 'var(--color-bear)'; });
+            orderProduct.addEventListener('change', calculateLocalMarginEstimate); orderQtyInput.addEventListener('input', calculateLocalMarginEstimate);
+
+            function calculateLocalMarginEstimate() {
+                const qty = parseFloat(orderQtyInput.value) || 0; const leverage = (orderProduct.value === 'MIS') ? 5 : 1;
+                const estimate = (marketState.currentPrice * qty) / leverage;
+                dispReqMargin.innerText = `₹${estimate.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+
+            submitOrderBtn.addEventListener('click', () => {
+                if(!loggedInUserId) return; errorBanner.style.display = 'none';
+                const orderPayload = { 
+                    symbol: marketState.activeSymbol, side: activeOrderSide, qty: parseFloat(orderQtyInput.value) || 0, price: marketState.currentPrice, product: orderProduct.value,
+                    stopLoss: orderSLInput.value ? parseFloat(orderSLInput.value) : null, takeProfit: orderTPInput.value ? parseFloat(orderTPInput.value) : null
+                };
+                
+                fetch(`${API_BASE_URL}/api/trade`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'user-id': loggedInUserId }, body: JSON.stringify(orderPayload) })
+                .then(async res => { const d = await res.json(); if (!res.ok) throw new Error(d.error); return d; })
+                .then(successResponse => {
+                    dispCash.innerText = `₹${successResponse.account.availableCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    dispMargin.innerText = `₹${successResponse.account.blockedMargin.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    localPositionsArray = successResponse.account.openPositions;
+                    renderPositionLedger(); renderHistoryLedger(successResponse.account.tradeHistory || []);
+                    orderSLInput.value = ""; orderTPInput.value = "";
+                }).catch(err => { errorBanner.innerText = err.message; errorBanner.style.display = 'block'; });
+            });
+
+            function renderPositionLedger() {
+                positionTableBody.innerHTML = '';
+                localPositionsArray.forEach(pos => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><b>${pos.symbol}</b></td><td style="color:${pos.side==='BUY'?'var(--color-bull)':'var(--color-bear)'};font-weight:bold;">${pos.side}</td>
+                        <td>${pos.product} ${pos.qty}</td><td>₹${pos.entryPrice.toFixed(2)}</td>
+                        <td style="font-size:11px; color:var(--text-muted); font-weight:bold;">SL: ${pos.stopLoss || 'None'}<br>TP: ${pos.takeProfit || 'None'}</td>
+                        <td id="table-ltp-${pos.id}">₹${marketState.currentPrice.toFixed(2)}</td><td id="table-pnl-${pos.id}">₹0.00</td>
+                        <td><button class="close-action-btn" onclick="window.squareOffPosition(${pos.id})">Square Off</button></td>
+                    `;
+                    positionTableBody.appendChild(row);
+                });
+            }
+
+            function renderHistoryLedger(historyArray) {
+                historyTableBody.innerHTML = ''; let wins = 0;
+                historyArray.forEach(trade => {
+                    if (trade.pnl > 0) wins++;
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><b>${trade.symbol}</b></td><td style="color:${trade.side==='BUY'?'var(--color-bull)':'var(--color-bear)'}; font-weight:bold;">${trade.side}</td>
+                        <td>${trade.qty}</td><td>₹${trade.entry_price.toFixed(2)}</td><td>₹${trade.close_price.toFixed(2)}</td>
+                        <td class="${trade.pnl >= 0 ? 'pos-profit' : 'pos-loss'}">₹${trade.pnl.toFixed(2)}</td>
+                    `;
+                    historyTableBody.appendChild(row);
+                });
+                if (historyArray.length > 0) { statWinrate.innerText = `Win Rate: ${((wins / historyArray.length) * 100).toFixed(1)}% (${wins}/${historyArray.length})`; } 
+                else { statWinrate.innerText = "Win Rate: 0%"; }
+            }
+
+            window.squareOffPosition = function(id) {
+                fetch(`${API_BASE_URL}/api/close`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'user-id': loggedInUserId }, body: JSON.stringify({ positionId: id, currentPrice: marketState.currentPrice }) })
+                .then(res => res.json())
+                .then(successResponse => {
+                    dispCash.innerText = `₹${successResponse.account.availableCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    dispMargin.innerText = `₹${successResponse.account.blockedMargin.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    localPositionsArray = successResponse.account.openPositions;
+                    renderPositionLedger(); renderHistoryLedger(successResponse.account.tradeHistory || []);
+                });
+            };
+
+            function updateLivePnLAndCheckRiskTriggers() {
+                let cumulativePnL = 0;
+                for (let i = localPositionsArray.length - 1; i >= 0; i--) {
+                    let pos = localPositionsArray[i];
+                    if (pos.symbol === marketState.activeSymbol) {
+                        let pnl = pos.side === 'BUY' ? (marketState.currentPrice - pos.entryPrice) * pos.qty : (pos.entryPrice - marketState.currentPrice) * pos.qty;
+                        cumulativePnL += pnl;
+                        const ltpCell = document.getElementById('table-ltp-' + pos.id); const pnlCell = document.getElementById('table-pnl-' + pos.id);
+                        if (ltpCell) ltpCell.innerText = `₹${marketState.currentPrice.toFixed(2)}`;
+                        if (pnlCell) { pnlCell.innerText = `₹${pnl.toFixed(2)}`; pnlCell.className = pnl >= 0 ? 'pos-profit' : 'pos-loss'; }
+                        
+                        let isSLHit = (pos.side === 'BUY' && pos.stopLoss && marketState.currentPrice <= pos.stopLoss) || (pos.side === 'SELL' && pos.stopLoss && marketState.currentPrice >= pos.stopLoss);
+                        let isTPHit = (pos.side === 'BUY' && pos.takeProfit && marketState.currentPrice >= pos.takeProfit) || (pos.side === 'SELL' && pos.takeProfit && marketState.currentPrice <= pos.takeProfit);
+                        if (isSLHit || isTPHit) { window.squareOffPosition(pos.id); }
+                    }
+                }
+                dispPnL.innerText = `₹${cumulativePnL.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                dispPnL.className = `metric-val ${cumulativePnL >= 0 ? 'pos-profit' : 'pos-loss'}`;
+            }
+        });
+    </script>
+</body>
+</html>
